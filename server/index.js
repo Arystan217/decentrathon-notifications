@@ -67,7 +67,7 @@ app.get('/api/generate-push/:clientId', async (req, res) => {
 
     // Generate push notification using OpenAI with complete data
     const prompt = `
-КЛИЕНТ: ${clientInfo?.name || 'Client'} (${clientInfo?.product || 'Unknown'})
+t pushКЛИЕНТ: ${clientInfo?.name || 'Client'} (${clientInfo?.product || 'Unknown'})
 
 ВСЕ ТРАНЗАКЦИИ (${transactions.length} записей):
 ${transactionsData}
@@ -134,7 +134,13 @@ ${transfersData}
 2. Польза/объяснение (как продукт решает задачу)
 3. Четкий CTA
 
-Верни только текст push-уведомления без дополнительного форматирования.
+ОБЯЗАТЕЛЬНО верни ответ ТОЛЬКО в этом формате:
+ПРОДУКТ: [точное название продукта из списка]
+УВЕДОМЛЕНИЕ: [текст push-уведомления]
+
+Пример:
+ПРОДУКТ: Карта для путешествий
+УВЕДОМЛЕНИЕ: Айгерим, в августе вы сделали 12 поездок на такси на 27 400 ₸. С картой для путешествий вернули бы ≈1 100 ₸. Откройте карту в приложении.
 
 Вот примеры как надо:
 Шаблоны (параметризованные, без брендинга)
@@ -177,7 +183,48 @@ ${transfersData}
     console.log(`Total tokens: ${usage.total_tokens}`)
     console.log(`==================\n`)
 
-    const pushNotification = completion.choices[0].message.content.trim()
+    const aiResponse = completion.choices[0].message.content.trim()
+
+    // Parse the AI response to extract product name and push notification
+    console.log(`\n=== RAW AI RESPONSE ===`)
+    console.log(aiResponse)
+    console.log(`======================\n`)
+
+    const productMatch = aiResponse.match(/ПРОДУКТ:\s*(.+?)(?:\n|$)/i)
+    const notificationMatch = aiResponse.match(/УВЕДОМЛЕНИЕ:\s*(.+)/s)
+
+    let productName = "Неизвестный продукт"
+    let pushNotification = aiResponse
+
+    if (productMatch) {
+      productName = productMatch[1].trim()
+    } else {
+      // Fallback: try to extract product name from the notification text
+      const productKeywords = [
+        'Карта для путешествий', 'Премиальная карта', 'Кредитная карта',
+        'Обмен валют', 'Кредит наличными', 'Депозит мультивалютный',
+        'Депозит сберегательный', 'Депозит накопительный', 'Инвестиции', 'Золотые слитки'
+      ]
+
+      for (const keyword of productKeywords) {
+        if (aiResponse.includes(keyword)) {
+          productName = keyword
+          break
+        }
+      }
+    }
+
+    if (notificationMatch) {
+      pushNotification = notificationMatch[1].trim()
+    } else {
+      // Fallback: use the entire response as notification
+      pushNotification = aiResponse.replace(/ПРОДУКТ:\s*.+?\n?/i, '').trim()
+    }
+
+    console.log(`\n=== AI RESPONSE PARSING ===`)
+    console.log(`Product: ${productName}`)
+    console.log(`Notification: ${pushNotification}`)
+    console.log(`==========================\n`)
 
     // Calculate some basic stats for response
     const totalSpending = transactions.reduce((sum, t) => sum + parseFloat(t.amount), 0)
@@ -193,19 +240,33 @@ ${transfersData}
       .slice(0, 5)
       .map(([category, amount]) => ({ category, amount: amount.toFixed(2) }))
 
+    // Create output directory if it doesn't exist
+    const outputDir = 'output'
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true })
+    }
+
+    // Generate CSV content
+    const csvContent = `client_code,product,push_notification\n${clientId},"${productName}","${pushNotification}"`
+
+    // Write CSV file locally
+    const csvFileName = `client_${clientId}_recommendation.csv`
+    const csvFilePath = `${outputDir}/${csvFileName}`
+    fs.writeFileSync(csvFilePath, csvContent, 'utf8')
+
+    console.log(`\n=== CSV FILE CREATED ===`)
+    console.log(`File: ${csvFilePath}`)
+    console.log(`Content: ${csvContent}`)
+    console.log(`========================\n`)
+
+    // Return JSON response with file info
     res.json({
       success: true,
       clientId,
-      clientName: clientInfo?.name || 'Client',
+      productName,
       pushNotification,
-      dataSummary: {
-        totalTransactions: transactions.length,
-        totalTransfers: transfers.length,
-        totalSpending: totalSpending.toFixed(2),
-        currency: clientInfo?.currency || 'KZT',
-        topCategories,
-        anonymized: true // Indicates city data has been removed
-      }
+      csvFile: csvFilePath,
+      message: `CSV file created successfully: ${csvFilePath}`
     })
 
   } catch (error) {
