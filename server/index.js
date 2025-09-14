@@ -246,13 +246,22 @@ ${transfersData}
       fs.mkdirSync(outputDir, { recursive: true })
     }
 
-    // Generate CSV content
-    const csvContent = `client_code,product,push_notification\n${clientId},"${productName}","${pushNotification}"`
+    // Escape CSV content properly
+    const escapeCSV = (str) => {
+      if (str.includes('"') || str.includes(',') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"'
+      }
+      return str
+    }
 
-    // Write CSV file locally
+    // Generate CSV content with proper escaping
+    const csvContent = `client_code,product,push_notification\n${clientId},"${escapeCSV(productName)}","${escapeCSV(pushNotification)}"`
+
+    // Write CSV file locally with UTF-8 BOM for proper encoding
     const csvFileName = `client_${clientId}_recommendation.csv`
     const csvFilePath = `${outputDir}/${csvFileName}`
-    fs.writeFileSync(csvFilePath, csvContent, 'utf8')
+    const csvWithBOM = '\uFEFF' + csvContent
+    fs.writeFileSync(csvFilePath, csvWithBOM, 'utf8')
 
     console.log(`\n=== CSV FILE CREATED ===`)
     console.log(`File: ${csvFilePath}`)
