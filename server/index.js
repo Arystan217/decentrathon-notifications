@@ -55,19 +55,19 @@ app.get('/api/generate-push/:clientId', async (req, res) => {
     // Get basic client info
     const clientInfo = transactions[0] || transfers[0]
 
-    // Format all transactions data for the AI
+    // Format all transactions data for the AI (anonymized - no city)
     const transactionsData = transactions.map(t =>
       `Дата: ${t.date}, Категория: ${t.category}, Сумма: ${t.amount} ${t.currency}, Статус: ${t.status}`
     ).join('\n')
 
-    // Format all transfers data for the AI
+    // Format all transfers data for the AI (anonymized - no city)
     const transfersData = transfers.map(t =>
       `Дата: ${t.date}, Тип: ${t.type}, Направление: ${t.direction}, Сумма: ${t.amount} ${t.currency}`
     ).join('\n')
 
     // Generate push notification using OpenAI with complete data
     const prompt = `
-КЛИЕНТ: ${clientInfo?.name || 'Client'} (${clientInfo?.city || 'Unknown'}, ${clientInfo?.product || 'Unknown'})
+КЛИЕНТ: ${clientInfo?.name || 'Client'} (${clientInfo?.product || 'Unknown'})
 
 ВСЕ ТРАНЗАКЦИИ (${transactions.length} записей):
 ${transactionsData}
@@ -204,6 +204,7 @@ ${transfersData}
         totalSpending: totalSpending.toFixed(2),
         currency: clientInfo?.currency || 'KZT',
         topCategories,
+        anonymized: true // Indicates city data has been removed
       }
     })
 
